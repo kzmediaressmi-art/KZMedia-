@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>KZMedia • Prototip</title>
+<style>
+:root {
+  --bg:#0b0c10; --card:#11131a; --text:#e8eaed; --muted:#a3a7b0; --primary:#4f8cff; --accent:#64d2ff; --danger:#ff5c74; --border:#212532; --input:#0e1016;
+}
+body{margin:0;font-family:system-ui;background:var(--bg);color:var(--text);}
+header{position:sticky;top:0;padding:12px;background:var(--card);border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;}
+header .brand{font-weight:800;}
+header .actions button{margin-left:8px;padding:6px 10px;border:none;border-radius:12px;cursor:pointer;}
+.container{display:grid;grid-template-columns:1fr;max-width:1100px;margin:16px auto;gap:16px;}
+@media(min-width:900px){.container{grid-template-columns:1fr 300px;}}
+.card{background:var(--card);border-radius:16px;padding:12px;border:1px solid var(--border);}
+textarea,input[type=text]{width:100%;padding:8px;border-radius:10px;border:1px solid var(--border);background:var(--input);color:var(--text);}
+button.btn{padding:6px 10px;border-radius:10px;border:none;cursor:pointer;}
+.feed{display:grid;gap:12px;}
+.post{border:1px solid var(--border);border-radius:12px;padding:10px;display:grid;gap:6px;}
+.post .avatar{width:36px;height:36px;border-radius:50%;background:var(--primary);display:grid;place-items:center;color:#fff;font-weight:700;}
+.comments{border-top:1px dashed var(--border);padding-top:6px;display:grid;gap:4px;}
+.comment{display:grid;grid-template-columns:28px 1fr;gap:4px;}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">KZ<b>Media</b></div>
+  <div class="actions">
+    <button id="themeBtn">🌙/☀️</button>
+    <button id="logoutBtn">Çıkış</button>
+  </div>
+</header>
+
+<main class="container">
+  <section>
+    <div class="card" id="composeCard">
+      <div>
+        <label>Ne paylaşmak istersin?</label>
+        <textarea id="postText" placeholder="Metin yaz..."></textarea>
+        <input id="imageUrl" type="text" placeholder="Görsel veya video URL (opsiyonel)">
+        <div style="margin-top:6px;">
+          <button id="postBtn" class="btn">Paylaş</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <strong>Akış</strong>
+      <div class="feed" id="feed"></div>
+      <div id="emptyFeed">Henüz paylaşım yok 🎉</div>
+    </div>
+  </section>
+
+  <aside>
+    <div class="card">
+      <label>Kullanıcı adı</label>
+      <input id="username" type="text" placeholder="ör. kursat">
+      <div style="margin-top:6px;">
+        <button id="loginBtn" class="btn">Giriş</button>
+      </div>
+      <div>Şu anki kullanıcı: <strong id="currentUser">—</strong></div>
+    </div>
+
+    <div class="card">
+      <strong>@KUZİLER Üyeleri</strong>
+      <ul id="kuzilerList">
+        <li>kursatomer</li>
+        <li>elalye</li>
+        <li>sena k.</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <button id="wipeBtn" class="btn">TÜMÜNÜ Sıfırla</button>
+    </div>
+  </aside>
+</main>
+
+<template id="postTmpl">
+  <div class="post">
+    <div style="display:flex;align-items:center;gap:6px;">
+      <div class="avatar"></div>
+      <strong class="author"></strong>
+      <span class="time" style="margin-left:auto;font-size:12px;color:var(--muted)"></span>
+    </div>
+    <div class="content"></div>
+    <img class="media" style="width:100%;border-radius:8px;border:1px solid var(--border);" hidden>
+    <div class="post-actions">
+      <button class="btn likeBtn">❤ <span class="likeCount">0</span></button>
+    </div>
+    <div class="comments" hidden>
+      <div style="display:flex;gap:4px;">
+        <input type="text" class="commentInput" placeholder="Yorum yaz...">
+        <button class="btn addCommentBtn">Ekle</button>
+      </div>
+      <div class="commentList"></div>
+    </div>
+  </div>
+</template>
+
+<script>
+const $ = s=>document.querySelector(s);
+const state = {user:null,posts:[],kuziler:["kursatomer","elalye","sena k."]};
+const dbKey='KZMedia.db';
+
+function save(){localStorage.setItem(dbKey,JSON.stringify(state));}
+function load(){const raw=localStorage.getItem(dbKey);if(raw){try{const data=JSON.parse(raw);state.user=data.user||null;state.posts=data.posts||[];}catch{};}}
+
+function uid(){return Math.random().toString(36).slice(2)+Date.now().toString(36);}
+function initials(name){return(name||"?").split(/\s+/).map(p=>p[0]).join('').slice(0,2).toUpperCase();}
+function timeAgo(ts){const s=Math.floor((Date.now()-ts)/1000);if(s<60)return s+" sn önce";const m=Math.floor(s/60);if(m<60)return m+" dk önce";const h=Math.floor(m/60);if(h<24)return h+" sa önce";const d=Math.floor(h/24);if(d<7)return d+" gün önce";const date=new Date(ts);return date.toLocaleString();}
+
+function init(){
+  load();
+  $('#currentUser').textContent=state.user||'—';
+  bindEvents();
+  render();
+}
+
+function bindEvents(){
+  $('#loginBtn').addEventListener('click',()=>{
+    const name=$('#username').value.trim();
+    if(!name){alert('Kullanıcı adı gir.');return;}
+    state.user=name; save(); $('#currentUser').textContent=name;
+  });
+
+  $('#logoutBtn').addEventListener('click',()=>{state.user=null; save(); $('#currentUser').textContent='—';});
+
+  $('#postBtn').addEventListener('click',()=>{
+    if(!state.user){alert('Önce giriş yap.');return;}
+    const text=$('#postText').value.trim();
+    const url=$('#imageUrl').value.trim();
+    if(!text){alert('Metin gerekli');return;}
+    const post={id:uid(),author:state.user,text,text,imageUrl:url||null,likes:0,createdAt:Date.now(),comments:[]};
+    state.posts.unshift(post);
+    $('#postText').value='';$('#imageUrl').value='';
+    save();render();
+  });
+
+  $('#wipeBtn').addEventListener('click',()=>{if(confirm('Tüm verileri silmek istiyor musun?')){state.posts=[];save();render();}});
+}
+
+function render(){
+  const feed=$('#feed');
+  feed.innerHTML='';
+  if(state.posts.length===0){$('#emptyFeed').hidden=false;}else{$('#emptyFeed').hidden=true;}
+  for(const p of state.posts){
+    const el=document.getElementById('postTmpl').content.firstElementChild.cloneNode(true);
+    el.dataset.id=p.id;
+    el.querySelector('.author').textContent=p.author;
+    el.querySelector('.avatar').textContent=initials(p.author);
+    el.querySelector('.time').textContent=timeAgo(p.createdAt);
+    el.querySelector('.content').textContent=p.text;
+    const img=el.querySelector('img.media');
+    if(p.imageUrl){img.hidden=false;img.src=p.imageUrl;}
+    const likeBtn=el.querySelector('.likeBtn');
+    const likeCount=el.querySelector('.likeCount');
+    likeCount.textContent=p.likes;
+    likeBtn.addEventListener('click',()=>{p.likes++; save(); render();});
+    feed.appendChild(el);
+  }
+}
+
+init();
+</script>
+
+</body>
+</html>
